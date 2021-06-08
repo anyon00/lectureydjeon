@@ -195,7 +195,7 @@
     - 호출관계에서 PubSub 과 Req/Resp 를 구분함
     - 서브 도메인과 바운디드 컨텍스트의 분리:  각 팀의 KPI 별로 아래와 같이 관심 구현 스토리를 나눠가짐
 
-https://github.com/anyon00/lectureydjeon/issues/1#issue-914408187
+![테스트](https://user-images.githubusercontent.com/80744279/121132779-85198f00-c86c-11eb-9611-76f80f906165.gif)
 
 # 구현:
 
