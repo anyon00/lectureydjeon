@@ -1,0 +1,82 @@
+server:
+  port: 8088
+
+---
+
+spring:
+  profiles: default
+  cloud:
+    gateway:
+      routes:
+        - id: class
+          uri: http://localhost:8081
+          predicates:
+            - Path=/classes/**, /class/**, /inquiryMypages/**
+        - id: course
+          uri: http://localhost:8082
+          predicates:
+            - Path=/courses/**, /course/**, /deliveries/** 
+        - id: pay
+          uri: http://localhost:8083
+          predicates:
+            - Path=/payments/**, /payment/** 
+        - id: alert
+          uri: http://localhost:8084
+          predicates:
+            - Path= 
+        - id: counsel
+          uri: http://localhost:8085
+          predicates:
+            - Path=/counsels/**, /counsel/** 
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins:
+              - "*"
+            allowedMethods:
+              - "*"
+            allowedHeaders:
+              - "*"
+            allowCredentials: true
+
+
+---
+
+spring:
+  profiles: docker
+  cloud:
+    gateway:
+      routes:
+        - id: class
+          uri: http://class:8080
+          predicates:
+            - Path=/classes/**, /class/**, /inquiryMypages/**
+        - id: course
+          uri: http://course:8080
+          predicates:
+            - Path=/courses/**, /course/**, /deliveries/** 
+        - id: pay
+          uri: http://pay:8080
+          predicates:
+            - Path=/payments/**, /payment/**
+        - id: alert
+          uri: http://alert:8080
+          predicates:
+            - Path= 
+        - id: counsel
+          uri: http://counsel:8080
+          predicates:
+            - Path=/counsels/**, /counsel/**
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins:
+              - "*"
+            allowedMethods:
+              - "*"
+            allowedHeaders:
+              - "*"
+            allowCredentials: true
+
+server:
+  port: 8080
