@@ -123,14 +123,20 @@
 ### 액터, 커맨드 부착하여 읽기 좋게
 ![액터커맨드](https://user-images.githubusercontent.com/80744183/119314373-a6488000-bcaf-11eb-9097-4204f5cef330.png)
 
+![액터커맨드부착하여읽기좋게_lectureydjeon](https://user-images.githubusercontent.com/80744279/121150740-be5afa80-c87e-11eb-899d-1cc610af9aba.jpg)
+
 ### 어그리게잇으로 묶기
 ![어그리게잇](https://user-images.githubusercontent.com/80744183/119314463-beb89a80-bcaf-11eb-868c-e307669ccc30.png)
+
+![어그리게잇으로묶기_lectureydjeon](https://user-images.githubusercontent.com/80744279/121150798-cb77e980-c87e-11eb-9a9f-a81e5664e4b2.jpg)
 
     - class의 수강신청, course의 강의등록, 결제의 결제이력은 그와 연결된 command 와 event 들에 의하여 트랜잭션이 유지되어야 하는 단위로 그들 끼리 묶어줌
 
 ### 바운디드 컨텍스트로 묶기
 
 ![바운디드](https://user-images.githubusercontent.com/80744183/119314555-d8f27880-bcaf-11eb-82cd-092f27876c0d.png)
+
+![컨텍스트바운드로묶기_lectureydjeon](https://user-images.githubusercontent.com/80744279/121150848-d6cb1500-c87e-11eb-8e0e-dd2eae8875f7.jpg)
 
     - 도메인 서열 분리 
         - Core Domain:  class, course : 없어서는 안될 핵심 서비스이며, 연견 Up-time SLA 수준을 99.999% 목표, 배포주기는 class 의 경우 1주일 1회 미만, course 의 경우 1개월 1회 미만
