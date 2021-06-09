@@ -134,7 +134,7 @@
 
 ![어그리게잇으로묶기_lectureydjeon](https://user-images.githubusercontent.com/80744279/121150798-cb77e980-c87e-11eb-9a9f-a81e5664e4b2.jpg)
 
-    - class의 수강신청, course의 강의등록, 결제의 결제이력은 그와 연결된 command 와 event 들에 의하여 트랜잭션이 유지되어야 하는 단위로 그들 끼리 묶어줌
+    - class의 수강신청, course의 강의등록, 결제의 결제이력, counsel의 상담변경(수강요청) 은 그와 연결된 command 와 event 들에 의하여 트랜잭션이 유지되어야 하는 단위로 그들 끼리 묶어줌
 
 ### 바운디드 컨텍스트로 묶기
 
@@ -143,7 +143,7 @@
 ![컨텍스트바운드로묶기_lectureydjeon](https://user-images.githubusercontent.com/80744279/121150848-d6cb1500-c87e-11eb-8e0e-dd2eae8875f7.jpg)
 
     - 도메인 서열 분리 
-        - Core Domain:  class, course : 없어서는 안될 핵심 서비스이며, 연견 Up-time SLA 수준을 99.999% 목표, 배포주기는 class 의 경우 1주일 1회 미만, course 의 경우 1개월 1회 미만
+        - Core Domain:  class, course, counsel : 없어서는 안될 핵심 서비스이며, 연견 Up-time SLA 수준을 99.999% 목표, 배포주기는 class 의 경우 1주일 1회 미만, course, counsel 의 경우 1개월 1회 미만
         - General Domain:   pay : 결제서비스로 3rd Party 외부 서비스를 사용하는 것이 경쟁력이 높음 (핑크색으로 이후 전환할 예정)
 
 ### 폴리시 부착 (괄호는 수행주체, 폴리시 부착을 둘째단계에서 해놔도 상관 없음. 전체 연계가 초기에 드러남)
@@ -168,6 +168,12 @@
     - 수강생이 강의를 결제한다 (ok)
     - 강의신청이 되면 주문 내역이 배송팀에게 전달된다 (ok)
     - 배송팀에서 강의 교재 배송 출발한다 (ok)
+
+    - 상담사가 수강생의 요청으로 강의를 신청한다 (ok)
+    - 상담사가 수강생의 요청으로 강의를 결제한다 (ok)
+    - 강의신청이 되면 주문 내역이 배송팀에게 전달된다 (ok)
+    - 배송팀에서 강의 교재 배송 출발한다 (ok)    
+    
 
 <img width="354" alt="1차본완성_2" src="https://user-images.githubusercontent.com/80744183/119315093-72218f00-bcb0-11eb-89da-74c039d0435a.png">
     
