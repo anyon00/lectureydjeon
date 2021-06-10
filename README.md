@@ -1251,6 +1251,8 @@ consumer = KafkaConsumer('lectureydjeon', bootstrap_servers=[
 ## 모니터링
 * istio 설치, Kiali 구성, Jaeger 구성, Prometheus 및 Grafana 구성
 
+![istio-system](https://user-images.githubusercontent.com/80744279/121474206-b5913280-c9fe-11eb-8d30-b1c067e875db.jpg)
+
 ```
 root@labs--750220183:/home/project/personal/lectureydjeon/class/src# kubectl get all -n istio-system
 NAME                                        READY   STATUS    RESTARTS   AGE
