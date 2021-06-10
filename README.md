@@ -244,85 +244,108 @@ mvn spring-boot:run
 ```
 
 - 아래 부터는 AWS 클라우드의 EKS 서비스 내에 서비스를 모두 배포 후 설명을 진행한다.
-```
-root@labs-1409824742:/home/project/team/lecture/course/kubernetes# kubectl get all
-NAME                           READY   STATUS    RESTARTS   AGE
-pod/alert-7cbc74668-clsdv      2/2     Running   0          3h13m
-pod/class-5864b4f7cc-rzrz9     1/1     Running   0          163m
-pod/course-64978c8dd8-nmwxp    1/1     Running   0          112m
-pod/gateway-65d7888594-mqpls   1/1     Running   0          3h11m
-pod/pay-575875fc9-kk56d        1/1     Running   2          162m
-pod/siege                      1/1     Running   0          8h
 
-NAME                 TYPE           CLUSTER-IP       EXTERNAL-IP                                                                  PORT(S)          AGE
-service/alert        ClusterIP      10.100.108.57    <none>                                                                       8084/TCP         6h43m
-service/class        ClusterIP      10.100.233.190   <none>                                                                       8080/TCP         7h12m
-service/course       ClusterIP      10.100.121.125   <none>                                                                       8080/TCP         3h30m
-service/gateway      LoadBalancer   10.100.138.145   aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com   8080:31881/TCP   8h
-service/kubernetes   ClusterIP      10.100.0.1       <none>                                                                       443/TCP          9h
-service/pay          ClusterIP      10.100.76.173    <none>                                                                       8080/TCP         7h4m
+![EKS서비스내서비스배포후](https://user-images.githubusercontent.com/80744279/121468157-4f53e200-c9f5-11eb-8f37-2eaecf9452d6.jpg)
 
-NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/alert     1/1     1            1           3h13m
-deployment.apps/class     1/1     1            1           163m
-deployment.apps/course    1/1     1            1           3h12m
-deployment.apps/gateway   1/1     1            1           3h11m
-deployment.apps/pay       1/1     1            1           162m
-
-NAME                                 DESIRED   CURRENT   READY   AGE
-replicaset.apps/alert-7cbc74668      1         1         1       3h13m
-replicaset.apps/class-5864b4f7cc     1         1         1       163m
-replicaset.apps/course-64978c8dd8    1         1         1       3h12m
-replicaset.apps/gateway-65d7888594   1         1         1       3h11m
-replicaset.apps/pay-575875fc9        1         1         1       162m
-
-NAME                                        REFERENCE          TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
-horizontalpodautoscaler.autoscaling/class   Deployment/class   0%/30%    1         10        1          155m
-horizontalpodautoscaler.autoscaling/pay     Deployment/pay     0%/30%    1         10        1          155m
-```
 
 ## DDD 의 적용
 
 - 각 서비스내에 도출된 핵심 Aggregate Root 객체를 Entity 로 선언하였다: 
- (예시는 course 마이크로 서비스). 이때 가능한 중학교 수준의 영어를 사용하려고 노력했다. 
+ (예시는 counsel 마이크로 서비스). 이때 가능한 중학교 수준의 영어를 사용하려고 노력했다. 
 
 ```
-package lecture;
+package lectureydjeon;
 
 import javax.persistence.*;
 import org.springframework.beans.BeanUtils;
 
+import lectureydjeon.external.Payment;
+import lectureydjeon.external.PaymentService;
+
 @Entity
-@Table(name = "Course_table")
-public class Course {
+@Table(name="Counsel_table")
+public class Counsel {
+
+    String testvalue;
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy=GenerationType.AUTO)
     private Long id;
-    private String name;
-    private String teacher;
+    private Long courseId;
+    private Long classId;
     private Long fee;
+    private String memo;
+    private String name;
+    private String customerType;
     private String textBook;
+    private String counselType;
 
     @PostPersist
-    public void onPostPersist() {
-        CourseRegistered courseRegistered = new CourseRegistered();
-        BeanUtils.copyProperties(this, courseRegistered);
-        courseRegistered.publishAfterCommit();
+    public void onPostPersist(){
+        CounselRegistered counselRegistered = new CounselRegistered();
+        BeanUtils.copyProperties(this, counselRegistered);
+        counselRegistered.publishAfterCommit();
     }
 
     @PostUpdate
-    public void onPostUpdate() {
-        CourseModified courseModified = new CourseModified();
-        BeanUtils.copyProperties(this, courseModified);
-        courseModified.publishAfterCommit();
+    public void onPostUpdate(){
+    
+        System.out.println("PostUpdate START -----------------------------------------");
+        if(!this.getCounselType().equals("CLASS_REGISTER")) {
+           CounselModiied counselModiied = new CounselModiied();
+           BeanUtils.copyProperties(this, counselModiied);
+           counselModiied.publishAfterCommit();
+           System.out.println ("KAFKA MESSAGE");
+        } else {
+            System.out.println("NO KAFKA MESSSAGE");
+
+        }
+        System.out.println("PostUpdate END -- --------------------------------------");
+    }
+
+    @PreUpdate 
+    public void onPreUpdate() throws Exception {
+        //Following code causes dependency to external APIs
+        // it is NOT A GOOD PRACTICE. instead, Event-Policy mapping is recommended.
+
+        // 여기에서 URL 들어온 값을 확인하여 분기 처리한다. 
+        // this 에 속성값으로 
+
+        Payment payment = new Payment();
+        // mappings goes here
+        payment.setClassId(this.getClassId());
+        payment.setCourseId(this.getCourseId());
+        payment.setFee(this.getFee());
+        payment.setStudent(this.getName());
+        payment.setTextBook(this.getTextBook());
+
+
+        System.out.println("PreUpdate START ----------------------------------------");   
+
+        if(this.getCounselType().equals("CLASS_REGISTER")) {
+            System.out.println ("PAYMENT");
+            System.out.println (this.getCounselType());
+
+            if(CounselApplication.applicationContext.getBean(PaymentService.class).pay(payment)) {
+                CounselClassRegistered counselClassRegistered = new CounselClassRegistered();
+                BeanUtils.copyProperties(this, counselClassRegistered);
+                counselClassRegistered.publishAfterCommit();
+            } else {
+                throw new RollbackException("Failed during payment");
+            }
+        } else {
+            System.out.println ("NO PAYMENT");
+            System.out.println (this.getCounselType());
+        }
+
+        System.out.println("PreUpdate END  ----------------------------------------");
     }
 
     @PreRemove
     public void onPreRemove() {
-        CourseDeleted courseDeleted = new CourseDeleted();
-        BeanUtils.copyProperties(this, courseDeleted);
-        courseDeleted.publishAfterCommit();
+        CounselDelete counselDelete = new CounselDelete();
+        BeanUtils.copyProperties(this, counselDelete);
+        counselDelete.publishAfterCommit();
     }
 
     public Long getId() {
@@ -332,6 +355,36 @@ public class Course {
     public void setId(Long id) {
         this.id = id;
     }
+    public Long getCourseId() {
+        return courseId;
+    }
+
+    public void setCourseId(Long courseId) {
+        this.courseId = courseId;
+    }
+
+    public String getMemo() {
+        return memo;
+    }
+
+    public void setMemo(String memo) {
+        this.memo = memo;
+    }
+    public Long getClassId() {
+        return classId;
+    }
+
+    public void setClassId(Long classId) {
+        this.classId = classId;
+    }
+
+    public String getCounselType() {
+        return counselType;
+    }
+
+    public void setCounselType(String counselType) {
+        this.counselType = counselType;
+    }
 
     public String getName() {
         return name;
@@ -340,24 +393,19 @@ public class Course {
     public void setName(String name) {
         this.name = name;
     }
-
-    public String getTeacher() {
-        return teacher;
+    public String getCustomerType() {
+        return customerType;
     }
 
-    public void setTeacher(String teacher) {
-        this.teacher = teacher;
+    public void setCustomerType(String customerType) {
+        this.customerType = customerType;
     }
 
-    public String getTextBook() {
+    private String getTextBook() {
         return textBook;
     }
 
-    public void setTextBook(String textBook) {
-        this.textBook = textBook;
-    }
-
-    public Long getFee() {
+    private Long getFee() {
         return fee;
     }
 
@@ -365,15 +413,19 @@ public class Course {
         this.fee = fee;
     }
 
+    public void setTextBook(String textBook) {
+        this.textBook = textBook;
+    }
 }
+
 ```
 - Entity Pattern 과 Repository Pattern 을 적용하여 JPA 를 통하여 다양한 데이터소스 유형 (RDB or NoSQL) 에 대한 별도의 처리가 없도록 데이터 접근 어댑터를 자동 생성하기 위하여 Spring Data REST 의 RestRepository 를 적용하였다
 ```
-package lecture;
+package lectureydjeon;
 
 import org.springframework.data.repository.PagingAndSortingRepository;
 
-public interface CourseRepository extends PagingAndSortingRepository<Course, Long> {
+public interface CounselRepository extends PagingAndSortingRepository<Counsel, Long> {
 
 }
 ```
@@ -382,40 +434,59 @@ public interface CourseRepository extends PagingAndSortingRepository<Course, Lon
 
 ```
 # 신규 강좌 등록
-http POST http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/courses name=korean teacher=hong-gil-dong fee=10000 textBook=kor_book
+http POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses name=korean teacher=hong-gil-dong fee=10000 textBook=kor_book
 
 # 등록된 강좌 확인
-http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/courses
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
 
 # 수강 신청
-http POST http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/classes courseId=1 fee=10000 student=john-doe textBook=kor_book
+http POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes courseId=1 fee=10000 student=john-doe textBook=kor_book
 
 # 수강 등록 확인
-http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/classes
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
 
 # 결제 성공 확인
-http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/payments
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/payments
 
 # 수강 교재 배송 시작 확인
-http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/deliveries
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/deliveries
 
 # My page에서 수강신청여부/결제성공여부/배송상태 확인
-http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/inquiryMypages
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/inquiryMypages
 
 # 수강 취소
-http DELETE http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/classes/1
+http DELETE http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes/1
 
 # 수강 삭제 확인
-http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/classes
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
 
 # 결제 취소 확인 (상태값 "CANCEL" 확인)
-http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/payments
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/payments
 
 # 배송 취소 확인 (상태값 "DELIVERY_CANCEL" 확인)
-http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/deliveries
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/deliveries
 
 # My page에서 수강신청여부/결제성공여부/배송상태 확인
-http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/inquiryMypages
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/inquiryMypages
+
+// 고객 상담 확인 
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/counsels
+
+// 고객 상담 등록 
+http POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/counsels courseId=1 classId=1 fee=10000 name=gil-dong textBook=eng_book memo=testtest customerType=student counselType=COUNSEL_REGISTER
+
+// 고객 상담 수정 
+// 1. 고객 상담 일반 수정 
+http PUT http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/counsels/1 courseId=1 classId=2 fee=10000 name=gil-dong textBook=eng_book memo=testtest2 customerType=student counselType=COUNSEL_MODIFY
+
+// 고객 상담 강의 등록 요청 
+http PUT http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/counsels/1 courseId=1 classId=2 fee=10000 name=gil-dong textBook=eng_book memo=testtest2 customerType=student counselType=CLASS_REGISTER
+
+//결제 확인
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/payments
+
+// 고객 상담 취소 
+http DELETE http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/counsels/1
 
 ```
 
@@ -429,9 +500,9 @@ Spring Cloud JPA를 사용하여 개발하였기 때문에 소스의 변경 부�
 
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://mysql-1621689014.mysql.svc.cluster.local:3306/paydb?useSSL=false&characterEncoding=UTF-8&serverTimezone=UTC
+    url: jdbc:mysql://mysql.mysql.svc.cluster.local:3306/paydb?useSSL=false&characterEncoding=UTF-8&serverTimezone=UTC
     username: root
-    password: 2pAXUITEjo
+    password: dnusIH3NV9
   jpa:
     database: mysql
     database-platform: org.hibernate.dialect.MySQL5InnoDBDialect
@@ -440,23 +511,23 @@ Spring Cloud JPA를 사용하여 개발하였기 때문에 소스의 변경 부�
 
 ```
 
-- mysql 서비스 확인 (kubectl get all,pvc -n mysql)
+- mysql 서비스 확인 (kubectl get all -n mysql)
 
 ```
-NAME                                    READY   STATUS    RESTARTS   AGE
-pod/mysql-1621826572-7b6b9d8477-qsjmb   1/1     Running   0          3h44m
 
-NAME                       TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE
-service/mysql-1621826572   ClusterIP   10.100.64.70   <none>        3306/TCP   8h
+root@labs--750220183:/home/project/personal/lectureydjeon/pay/src/main/resources# kubectl get all -n mysql
+NAME                         READY   STATUS    RESTARTS   AGE
+pod/mysql-7b794c7595-l8lzr   1/1     Running   0          22h
 
-NAME                               READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/mysql-1621826572   1/1     1            1           8h
+NAME            TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+service/mysql   ClusterIP   10.100.150.98   <none>        3306/TCP   22h
 
-NAME                                          DESIRED   CURRENT   READY   AGE
-replicaset.apps/mysql-1621826572-7b6b9d8477   1         1         1       8h
+NAME                    READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/mysql   1/1     1            1           22h
 
-NAME                                     STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-persistentvolumeclaim/mysql-1621826572   Bound    pvc-d746469a-9f39-4177-9f5a-1aee384d6064   8Gi        RWO            gp2            8h
+NAME                               DESIRED   CURRENT   READY   AGE
+replicaset.apps/mysql-7b794c7595   1         1         1       22h8h
+
 ```
 
 ## 폴리글랏 프로그래밍
@@ -478,7 +549,7 @@ log_file = os.getenv('LOG_FILE')
 logging.debug("KAFKA URL : %s" % (kafka_url))
 logging.debug("LOG_FILE : %s" % (log_file))
 
-consumer = KafkaConsumer('lecture', bootstrap_servers=[
+consumer = KafkaConsumer('lectureydjeon', bootstrap_servers=[
                          kafka_url], auto_offset_reset='earliest', enable_auto_commit=True, group_id='alert')
 
 for message in consumer:
@@ -502,14 +573,33 @@ ENTRYPOINT ["python","-u","alert_consumer.py"]
 
 ## 동기식 호출 과 Fallback 처리
 
-분석단계에서의 조건 중 하나로 수강신청(class)->결제(pay) 간의 호출은 동기식 일관성을 유지하는 트랜잭션으로 처리하기로 하였다. 호출 프로토콜은 이미 앞서 Rest Repository 에 의해 노출되어있는 REST 서비스를 FeignClient 를 이용하여 호출하도록 한다. 
+1. 분석단계에서의 조건 중 하나로 수강신청(class)->결제(pay) 간의 호출은 동기식 일관성을 유지하는 트랜잭션으로 처리하기로 하였다. 호출 프로토콜은 이미 앞서 Rest Repository 에 의해 노출되어있는 REST 서비스를 FeignClient 를 이용하여 호출하도록 한다. 
+
+1. 추가 조건으로 고객상담시 고객에 요청에 의해 수강신청이 가능하다. 상담수정(counsel)->결제(pay) 간의 호출은 동기식 일관성을 유지하는 트랜잭션으로 처리하기로 하였다. 호출 프로토콜은 이미 앞서 Rest Repository 에 의해 노출되어있는 REST 서비스를 FeignClient 를 이용하여 호출하도록 한다. 
 
 - 결제서비스를 호출하기 위하여 Stub과 (FeignClient) 를 이용하여 Service 대행 인터페이스 (Proxy) 를 구현 
 
 ```
 # (class) PaymentService.java
 
-package lecture.external;
+package lectureydjeon.external;
+
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+
+@FeignClient(name="pay", url="${api.payment.url}", fallback = PaymentServiceFallback.class)
+public interface PaymentService {
+
+    @RequestMapping(method= RequestMethod.POST, path="/succeedPayment")
+    public boolean pay(@RequestBody Payment payment);
+
+}
+
+# (counsel) PaymentService.java
+
+package lectureydjeon.external;
 
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -529,7 +619,7 @@ public interface PaymentService {
 ```
 # (class) PaymentServiceFallback.java
 
-package lecture.external;
+package lectureydjeon.external;
 
 import org.springframework.stereotype.Component;
 
@@ -543,9 +633,31 @@ public class PaymentServiceFallback implements PaymentService {
         return false;
     }
 }
+
+# (counsel) PaymentServiceFallback.java
+
+package lectureydjeon.external;
+  
+import org.springframework.stereotype.Component;
+
+@Component
+public class PaymentServiceFallback implements PaymentService {
+
+    @Override
+    public boolean pay(Payment payment) {
+        // TODO Auto-generated method stub
+
+        System.out.println("Circuit breaker has been opened. Fallback returned instead.");
+
+        return false;
+    }
+
+}
+
 ```
 
 - 주문을 받은 직후(@PostPersist) 결제를 요청하도록 처리
+- 상담수정 요청을 받은 후(@PreUpdate) 결제를 요청하도록 처리 
 ```
 # Class.java (Entity)
     @PostPersist
@@ -566,6 +678,34 @@ public class PaymentServiceFallback implements PaymentService {
             throw new RollbackException("Failed during payment");
         }
     }
+    
+# Counsel.java (Entity)
+    @PreUpdate
+    public void onPreUpdate() throws Exception {
+        payment.setClassId(this.getClassId());
+        payment.setCourseId(this.getCourseId());
+        payment.setFee(this.getFee());
+        payment.setStudent(this.getName());
+        payment.setTextBook(this.getTextBook());
+
+        System.out.println("PreUpdate START ----------------------------------------");
+
+        if(this.getCounselType().equals("CLASS_REGISTER")) {
+            System.out.println ("PAYMENT");
+            System.out.println (this.getCounselType());
+
+            if(CounselApplication.applicationContext.getBean(PaymentService.class).pay(payment)) {
+                CounselClassRegistered counselClassRegistered = new CounselClassRegistered();
+                BeanUtils.copyProperties(this, counselClassRegistered);
+            } else {
+                throw new RollbackException("Failed during payment");
+            }
+        } else {
+            System.out.println ("NO PAYMENT");
+            System.out.println (this.getCounselType());
+        }
+        System.out.println("PreUpdate END  ----------------------------------------");	
+	
 ```
 
 - 동기식 호출에서는 호출 시간에 따른 타임 커플링이 발생하며, 결제 시스템이 장애가 나면 주문도 못받는다는 것을 확인:
@@ -577,15 +717,15 @@ cd ./pay/kubernetes
 kubectl delete -f deployment.yml
 
 # 수강 신청
-http POST http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/classes courseId=1 fee=10000 student=KimSoonHee textBook=eng_book #Fail
-http POST http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/classes courseId=1 fee=12000 student=JohnDoe textBook=kor_book #Fail
+http POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes courseId=1 fee=10000 student=KimSoonHee textBook=eng_book #Fail
+http POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes courseId=1 fee=12000 student=JohnDoe textBook=kor_book #Fail
 
 # 결제서비스 재기동
 kubectl apply -f deployment.yml
 
 # 수강 신청
-http POST http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/classes courseId=1 fee=10000 student=KimSoonHee textBook=eng_book #Success
-http POST http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/classes courseId=1 fee=12000 student=JohnDoe textBook=kor_book #Success
+http POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes courseId=1 fee=10000 student=KimSoonHee textBook=eng_book #Success
+http POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes courseId=1 fee=12000 student=JohnDoe textBook=kor_book #Success
 ```
 
 - 또한 과도한 요청시에 서비스 장애가 도미노 처럼 벌어질 수 있다. 
@@ -599,7 +739,7 @@ http POST http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.am
 - 이를 위하여 결제이력에 기록을 남긴 후에 곧바로 결제승인이 되었다는 도메인 이벤트를 카프카로 송출한다(Publish)
  
 ```
-package lecture;
+package lectureydjeon;
 
 @Entity
 @Table(name = "Payment_table")
@@ -680,7 +820,7 @@ public class PolicyHandler {
         }
     }
 	
-	@StreamListener(KafkaProcessor.INPUT)
+    @StreamListener(KafkaProcessor.INPUT)
     public void whenTextbookDeliveried_then_UPDATE_2(@Payload TextbookDeliveried textbookDeliveried) {
         try {
             if (textbookDeliveried.isMe()) {
@@ -707,18 +847,18 @@ cd ./course/kubernetes
 kubectl delete -f deployment.yml
 
 # 수강 신청
-http POST http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/classes courseId=1 fee=10000 student=KimSoonHee textBook=eng_book #Success
-http POST http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/classes courseId=1 fee=12000 student=JohnDoe textBook=kor_book #Success
+http POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes courseId=1 fee=10000 student=KimSoonHee textBook=eng_book #Success
+http POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes courseId=1 fee=12000 student=JohnDoe textBook=kor_book #Success
 
 # 수강 신청 상태 확인
-http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/classes   # 수강 신청 완료 
-http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/inquiryMypages  # 배송 상태 "deliveryStatus": null
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes   # 수강 신청 완료 
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/inquiryMypages  # 배송 상태 "deliveryStatus": null
 
 # 배송 서비스 (course) 기동
 kubectl apply -f deployment.yml
 
 # 배송 상태 확인
-http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.amazonaws.com:8080/inquiryMypages  # 배송 상태 "deliveryStatus": "DELIVERY_START"
+http GET http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/inquiryMypages  # 배송 상태 "deliveryStatus": "DELIVERY_START"
 ```
 
 
@@ -734,48 +874,42 @@ http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.ama
 
 - 빌드 프로젝트 생성
 
-![image](https://user-images.githubusercontent.com/80744224/119322283-7356ba00-bcb8-11eb-806f-b0a8a2317783.png)
-
+![빌드프로젝트1](https://user-images.githubusercontent.com/80744279/121468203-5ed32b00-c9f5-11eb-8ea6-a2ac92200127.jpg)
 
 - Github 계정 연결 후 Fork 한 리포지토리 연결
 
-![image](https://user-images.githubusercontent.com/80744224/119322218-6639cb00-bcb8-11eb-8d93-acbe471cdc68.png)
-
+![빌드프로젝트2_소스](https://user-images.githubusercontent.com/80744279/121468243-6e527400-c9f5-11eb-9d0e-dcfc59aad940.jpg)
 
 - Webhook 을 설정하여 Github 에 코드가 푸쉬될 때마다 트리거 동작
 
-![image](https://user-images.githubusercontent.com/80744224/119322149-5621eb80-bcb8-11eb-94b8-7e2fd211d85a.png)
-
+![빌드프로젝트3_webhook](https://user-images.githubusercontent.com/80744279/121468270-7ad6cc80-c9f5-11eb-811f-7680db811991.jpg)
 
 - 빌드가 돌아갈 환경 설정
 
-![image](https://user-images.githubusercontent.com/80744224/119322908-17d8fc00-bcb9-11eb-9af1-158225ac4c6a.png)
+![빌드프로젝트4_환경](https://user-images.githubusercontent.com/80744279/121468296-84603480-c9f5-11eb-9a23-e54324127aed.jpg)
 
-- AWS 계정 ID 
-
-![image](https://user-images.githubusercontent.com/80744224/119322675-d3e5f700-bcb8-11eb-8a74-a6532e8f5932.png)
+![빌드프로젝트5_환경](https://user-images.githubusercontent.com/80744279/121468314-8de99c80-c9f5-11eb-92a2-99674d1d50ed.jpg)
 
 
 - 빌드 스펙
 
-![image](https://user-images.githubusercontent.com/80744224/119323010-33dc9d80-bcb9-11eb-93c6-33e0a26f73c9.png)
+![빌드프로젝트6_buildspec](https://user-images.githubusercontent.com/80744279/121468342-98a43180-c9f5-11eb-9ca9-6172f8f83795.jpg)
+
 
 
 - Codebuild 와 EKS 연결
 
 -- KUBE_URL
-![image](https://user-images.githubusercontent.com/80744192/119440729-d51e2f00-bd5f-11eb-9b8d-1c5283fe300b.png)
+![빌드프로젝트7_KUBE_URL](https://user-images.githubusercontent.com/80744279/121468371-a48ff380-c9f5-11eb-86ab-45ff1181f22c.jpg)
 
+-- 환경 변수 추가 
 
--- KUBE_TOKEN
-![image](https://user-images.githubusercontent.com/80744192/119440815-fbdc6580-bd5f-11eb-85aa-8c50af946275.png)
-![image](https://user-images.githubusercontent.com/80744224/119324092-620ead00-bcba-11eb-895d-3abda8681720.png)
+![빌드프로젝트8_환경변수추가](https://user-images.githubusercontent.com/80744279/121468400-b1144c00-c9f5-11eb-9086-c4c1f980bb26.jpg)
 
 
 -- 배포 성공
 
 ![image](https://user-images.githubusercontent.com/80744224/119431690-f9711000-bd4d-11eb-9c59-d43244d3f31a.png)
-
 
 
 
@@ -785,17 +919,17 @@ http GET http://aa8ed367406254fc0b4d73ae65aa61cd-24965970.ap-northeast-2.elb.ama
 
 mvn package
 
-docker build -t 052937454741.dkr.ecr.ap-northeast-2.amazonaws.com/lecture-course:latest .
+docker build -t 879772956301.dkr.ecr.ca-central-1.amazonaws.com/user18-lectureydjeon-counsel .
 
-docker push 052937454741.dkr.ecr.ap-northeast-2.amazonaws.com/lecture-course:latest
+docker push 879772956301.dkr.ecr.ca-central-1.amazonaws.com/user18-lectureydjeon-counsel
 
 - docker 이미지로 Deployment 생성
 
-kubectl create deploy course --image=052937454741.dkr.ecr.ap-northeast-2.amazonaws.com/lecture-course:latest
+kubectl create deploy gateway --image=879772956301.dkr.ecr.ca-central-1.amazonaws.com/user18-lectureydjeon-counsel:latest
 
 - expose
 
-kubectl expose deploy course --type=ClusterIP --port=8080
+kubectl expose deploy counsel --type=ClusterIP --port=8080
 
 
 ## 동기식 호출 / 서킷 브레이킹 / 장애격리
@@ -822,66 +956,66 @@ hystrix:
 - 30초 동안 실시
 
 ```
-$ siege -c50 -t30S -r10 -v --content-type "application/json" 'http://gateway:8080/classes POST {"courseId": 1, "fee": 10000, "student": "gil-dong", "textBook": "eng_book"}'
+$ siege -c50 -t30S -r10 -v --content-type "application/json" 'http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes POST {"courseId": 1, "fee": 10000, "student": "gil-dong", "textBook": "eng_book"}'
 
 defaulting to time-based testing: 30 seconds
 ** SIEGE 4.0.4
 ** Preparing 10 concurrent users for battle.
 The server is now under siege...
 
-HTTP/1.1 201     0.68 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.69 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.85 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.80 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.90 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.70 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.20 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.79 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.80 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.71 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.71 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.81 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.10 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.69 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.09 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.80 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     1.38 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.19 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.20 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.80 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.80 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.70 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.70 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.90 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.90 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.71 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.70 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.77 secs:     250 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 201     0.72 secs:     250 bytes ==> POST http://gateway:8080/classes
+HTTP/1.1 201     0.68 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.69 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.85 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.80 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.90 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.70 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.20 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.79 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.80 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.71 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.71 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.81 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.10 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.69 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.09 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.80 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     1.38 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.19 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.20 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.80 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.80 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.70 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.70 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.90 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.90 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.71 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.70 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.77 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 201     0.72 secs:     250 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
 
 * 요청이 과도하여 CB를 동작함 요청을 차단
 
-HTTP/1.1 500     1.31 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.51 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.42 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.52 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.51 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.71 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.99 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     2.60 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.70 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.70 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.72 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.91 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.68 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     2.10 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     2.80 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.82 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     2.08 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     0.38 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.60 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     1.90 secs:     221 bytes ==> POST http://gateway:8080/classes
-HTTP/1.1 500     0.49 secs:     221 bytes ==> POST http://gateway:8080/classes
+HTTP/1.1 500     1.31 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.51 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.42 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.52 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.51 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.71 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.99 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     2.60 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.70 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.70 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.72 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.91 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.68 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     2.10 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     2.80 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.82 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     2.08 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     0.38 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.60 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     1.90 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
+HTTP/1.1 500     0.49 secs:     221 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/classes
 
 * 끝까지 500 에러 발생
 
@@ -911,7 +1045,10 @@ Shortest transaction:           0.09
 ```
 kubectl autoscale deploy class --min=1 --max=10 --cpu-percent=30
 kubectl autoscale deploy pay --min=1 --max=10 --cpu-percent=30
+kubectl autoscale deploy counsel --min=1 --max=10 --cpu-percent=30
 ```
+![오토스케일](https://user-images.githubusercontent.com/80744279/121471886-5bdb3900-c9fb-11eb-9ba5-5fd51aac6dd0.jpg)
+
 - CB 에서 했던 방식대로 워크로드를 30초 동안 걸어준다. 
 ```
 siege -c50 -t30S -r10 -v --content-type "application/json" 'http://gateway:8080/classes POST {"courseId": 1, "fee": 10000, "student": "gil-dong", "textBook": "eng_book"}'
@@ -973,18 +1110,18 @@ siege -c100 -t120S -r10 -v --content-type "application/json" 'http://gateway:808
 ** Preparing 100 concurrent users for battle.
 The server is now under siege...
 
-HTTP/1.1 201     3.43 secs:     251 bytes ==> POST http://gateway:8080/courses
-HTTP/1.1 201     1.28 secs:     251 bytes ==> POST http://gateway:8080/courses
-HTTP/1.1 201     0.20 secs:     251 bytes ==> POST http://gateway:8080/courses
-HTTP/1.1 201     3.44 secs:     251 bytes ==> POST http://gateway:8080/courses
-HTTP/1.1 201     1.18 secs:     251 bytes ==> POST http://gateway:8080/courses
-HTTP/1.1 201     0.28 secs:     251 bytes ==> POST http://gateway:8080/courses
-HTTP/1.1 201     1.41 secs:     251 bytes ==> POST http://gateway:8080/courses
-HTTP/1.1 201     1.22 secs:     251 bytes ==> POST http://gateway:8080/courses
-HTTP/1.1 201     0.21 secs:     251 bytes ==> POST http://gateway:8080/courses
-HTTP/1.1 201     0.13 secs:     251 bytes ==> POST http://gateway:8080/courses
-HTTP/1.1 201     1.41 secs:     251 bytes ==> POST http://gateway:8080/courses
-HTTP/1.1 201     1.31 secs:     251 bytes ==> POST http://gateway:8080/courses
+HTTP/1.1 201     3.43 secs:     251 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
+HTTP/1.1 201     1.28 secs:     251 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
+HTTP/1.1 201     0.20 secs:     251 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
+HTTP/1.1 201     3.44 secs:     251 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
+HTTP/1.1 201     1.18 secs:     251 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
+HTTP/1.1 201     0.28 secs:     251 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
+HTTP/1.1 201     1.41 secs:     251 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
+HTTP/1.1 201     1.22 secs:     251 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
+HTTP/1.1 201     0.21 secs:     251 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
+HTTP/1.1 201     0.13 secs:     251 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
+HTTP/1.1 201     1.41 secs:     251 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
+HTTP/1.1 201     1.31 secs:     251 bytes ==> POST http://affa53b8e59a4423ea6254a1957e9f9f-1129816206.ca-central-1.elb.amazonaws.com:8080/courses
 
 ```
 
@@ -1061,7 +1198,7 @@ Shortest transaction:           0.00
 
 - kafka환경
 ```
-  운영 : kafka-1621824578.kafka.svc.cluster.local:9092
+  운영 : my-kafka.kafka.svc.cluster.local:9092
   개발 : localhost:9092
 ```
 
@@ -1073,7 +1210,7 @@ kind: ConfigMap
 metadata:
   name: kafka-config
 data:
-  KAFKA_URL: kafka-1621824578.kafka.svc.cluster.local:9092
+  KAFKA_URL: my-kafka.kafka.svc.cluster.local:9092
   LOG_FILE: /tmp/debug.log
 ```
 
@@ -1081,7 +1218,7 @@ data:
 deployment yaml 파일
 
        - name: consumer
-          image: 052937454741.dkr.ecr.ap-northeast-2.amazonaws.com/lecture-consumer:latest 
+          image: 879772956301.dkr.ecr.ca-central-1.amazonaws.com/user18-lectureydjeon-alert-consumer:latest 
           env:
           - name: KAFKA_URL
             valueFrom:
@@ -1106,7 +1243,7 @@ import os
 kafka_url = os.getenv('KAFKA_URL')
 log_file = os.getenv('LOG_FILE')
 
-consumer = KafkaConsumer('lecture', bootstrap_servers=[
+consumer = KafkaConsumer('lectureydjeon', bootstrap_servers=[
                          kafka_url], auto_offset_reset='earliest', enable_auto_commit=True, group_id='alert')
 
 
@@ -1115,48 +1252,48 @@ consumer = KafkaConsumer('lecture', bootstrap_servers=[
 * istio 설치, Kiali 구성, Jaeger 구성, Prometheus 및 Grafana 구성
 
 ```
-root@labs-1409824742:/home/project/team# kubectl get all -n istio-system
+root@labs--750220183:/home/project/personal/lectureydjeon/class/src# kubectl get all -n istio-system
 NAME                                        READY   STATUS    RESTARTS   AGE
-pod/grafana-767c5487d6-tccjz                1/1     Running   0          24m
-pod/istio-egressgateway-74f9769788-5z25x    1/1     Running   0          10h
-pod/istio-ingressgateway-74645cb9df-6t4zk   1/1     Running   0          10h
-pod/istiod-756fdd548-rz5fn                  1/1     Running   0          10h
-pod/jaeger-566c547fb9-d9g8l                 1/1     Running   0          13s
-pod/kiali-89fd7f87b-mjtkl                   1/1     Running   0          10h
-pod/prometheus-788c945c9c-ft9wd             2/2     Running   0          10h
+pod/grafana-767c5487d6-4phgz                1/1     Running   0          23h
+pod/istio-egressgateway-74f9769788-kfcp2    1/1     Running   0          23h
+pod/istio-ingressgateway-74645cb9df-nl2d8   1/1     Running   0          23h
+pod/istiod-756fdd548-6sbkl                  1/1     Running   0          23h
+pod/jaeger-566c547fb9-686gz                 1/1     Running   0          23h
+pod/kiali-89fd7f87b-s2k57                   1/1     Running   0          23h
+pod/prometheus-788c945c9c-pgsvn             2/2     Running   0          23h
 
-NAME                           TYPE           CLUSTER-IP       EXTERNAL-IP                                                                    PORT(S)                                                                      AGE
-service/grafana                LoadBalancer   10.100.27.22     a17ce955b36c643dba43634c3958f665-1939868886.ap-northeast-2.elb.amazonaws.com   3000:30186/TCP                                                               24m
-service/istio-egressgateway    ClusterIP      10.100.128.222   <none>                                                                         80/TCP,443/TCP,15443/TCP                                                     10h
-service/istio-ingressgateway   LoadBalancer   10.100.24.155    aac2dd82b25c4416b973f4e43609696a-1789343097.ap-northeast-2.elb.amazonaws.com   15021:31151/TCP,80:30591/TCP,443:31900/TCP,31400:31273/TCP,15443:32249/TCP   10h
-service/istiod                 ClusterIP      10.100.167.39    <none>                                                                         15010/TCP,15012/TCP,443/TCP,15014/TCP,853/TCP                                10h
-service/kiali                  LoadBalancer   10.100.5.19      a4aba4808c91d4027949418f3d13b407-827239036.ap-northeast-2.elb.amazonaws.com    20001:32662/TCP,9090:30625/TCP                                               10h
-service/prometheus             ClusterIP      10.100.32.199    <none>                                                                         9090/TCP                                                                     10h
-service/tracing                LoadBalancer   10.100.15.68     ae3b283c82cb34c0f88f2ca92fc70489-1898513510.ap-northeast-2.elb.amazonaws.com   80:30018/TCP                                                                 13s
-service/zipkin                 ClusterIP      10.100.208.86    <none>                                                                         9411/TCP                                                                     13s
+NAME                           TYPE           CLUSTER-IP       EXTERNAL-IP                                                                  PORT(S)                                                                      AGE
+service/grafana                ClusterIP      10.100.48.187    <none>                                                                       3000/TCP                                                                     23h
+service/istio-egressgateway    ClusterIP      10.100.128.40    <none>                                                                       80/TCP,443/TCP,15443/TCP                                                     23h
+service/istio-ingressgateway   LoadBalancer   10.100.230.100   a0446e9523100475a9df5e8f0e9d642f-1384409301.ca-central-1.elb.amazonaws.com   15021:32721/TCP,80:31516/TCP,443:32715/TCP,31400:30741/TCP,15443:30018/TCP   23h
+service/istiod                 ClusterIP      10.100.51.21     <none>                                                                       15010/TCP,15012/TCP,443/TCP,15014/TCP,853/TCP                                23h
+service/kiali                  LoadBalancer   10.100.117.53    ac051bf54dc754b38b27582972a96c4c-534696898.ca-central-1.elb.amazonaws.com    20001:31541/TCP,9090:30486/TCP                                               23h
+service/prometheus             ClusterIP      10.100.6.185     <none>                                                                       9090/TCP                                                                     23h
+service/tracing                LoadBalancer   10.100.199.79    ac05279e65320496c911d37849bbdea9-2043072707.ca-central-1.elb.amazonaws.com   80:32720/TCP                                                                 23h
+service/zipkin                 ClusterIP      10.100.183.83    <none>                                                                       9411/TCP                                                                     23h
 
 NAME                                   READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/grafana                1/1     1            1           24m
-deployment.apps/istio-egressgateway    1/1     1            1           10h
-deployment.apps/istio-ingressgateway   1/1     1            1           10h
-deployment.apps/istiod                 1/1     1            1           10h
-deployment.apps/jaeger                 1/1     1            1           14s
-deployment.apps/kiali                  1/1     1            1           10h
-deployment.apps/prometheus             1/1     1            1           10h
+deployment.apps/grafana                1/1     1            1           23h
+deployment.apps/istio-egressgateway    1/1     1            1           23h
+deployment.apps/istio-ingressgateway   1/1     1            1           23h
+deployment.apps/istiod                 1/1     1            1           23h
+deployment.apps/jaeger                 1/1     1            1           23h
+deployment.apps/kiali                  1/1     1            1           23h
+deployment.apps/prometheus             1/1     1            1           23h
 
 NAME                                              DESIRED   CURRENT   READY   AGE
-replicaset.apps/grafana-767c5487d6                1         1         1       24m
-replicaset.apps/istio-egressgateway-74f9769788    1         1         1       10h
-replicaset.apps/istio-ingressgateway-74645cb9df   1         1         1       10h
-replicaset.apps/istiod-756fdd548                  1         1         1       10h
-replicaset.apps/jaeger-566c547fb9                 1         1         1       13s
-replicaset.apps/kiali-89fd7f87b                   1         1         1       10h
-replicaset.apps/prometheus-788c945c9c             1         1         1       10h
+replicaset.apps/grafana-767c5487d6                1         1         1       23h
+replicaset.apps/istio-egressgateway-74f9769788    1         1         1       23h
+replicaset.apps/istio-ingressgateway-74645cb9df   1         1         1       23h
+replicaset.apps/istiod-756fdd548                  1         1         1       23h
+replicaset.apps/jaeger-566c547fb9                 1         1         1       23h
+replicaset.apps/kiali-89fd7f87b                   1         1         1       23h
+replicaset.apps/prometheus-788c945c9c             1         1         1       23h
 ```
-- Tracing (Kiali) http://a4aba4808c91d4027949418f3d13b407-827239036.ap-northeast-2.elb.amazonaws.com:20001/
+- Tracing (Kiali) http://ac051bf54dc754b38b27582972a96c4c-534696898.ca-central-1.elb.amazonaws.com:20001/
 ![image](https://user-images.githubusercontent.com/80744192/119357389-79619080-bce2-11eb-88b8-41fceafc8568.png)
 
-- Jaeger http://ae3b283c82cb34c0f88f2ca92fc70489-1898513510.ap-northeast-2.elb.amazonaws.com/
+- Jaeger http://ac05279e65320496c911d37849bbdea9-2043072707.ca-central-1.elb.amazonaws.com/
 ![image](https://user-images.githubusercontent.com/80744192/119419756-ed795400-bd35-11eb-9530-6af13f3bfa5d.png)
 
 - 모니터링 (Grafana) http://http://a17ce955b36c643dba43634c3958f665-1939868886.ap-northeast-2.elb.amazonaws.com:3000/
