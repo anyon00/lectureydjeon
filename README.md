@@ -1296,6 +1296,6 @@ replicaset.apps/prometheus-788c945c9c             1         1         1       23
 - Jaeger http://ac05279e65320496c911d37849bbdea9-2043072707.ca-central-1.elb.amazonaws.com/
 ![image](https://user-images.githubusercontent.com/80744192/119419756-ed795400-bd35-11eb-9530-6af13f3bfa5d.png)
 
-- 모니터링 (Grafana) http://http://a17ce955b36c643dba43634c3958f665-1939868886.ap-northeast-2.elb.amazonaws.com:3000/
+- 모니터링 (Grafana) http://a178caf55fd1248f4be2dc4adf92a7bf-1574409717.ca-central-1.elb.amazonaws.com:3000/
 ![image](https://user-images.githubusercontent.com/80744192/119419299-f1f13d00-bd34-11eb-88ec-6cfce29ca234.png)
 
