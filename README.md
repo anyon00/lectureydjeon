@@ -158,6 +158,8 @@
 
 ![1차본완성](https://user-images.githubusercontent.com/80744183/119314979-4bfbef00-bcb0-11eb-8e31-51cc5ef9d9fc.png)
 
+수정
+![완성된1차모형](https://user-images.githubusercontent.com/80744279/121443795-2584c600-c9c9-11eb-99c3-8eac2b0beed7.jpg)
     - View Model 추가
 
 ### 1차 완성본에 대한 기능적/비기능적 요구사항을 커버하는지 검증
@@ -173,7 +175,7 @@
     - 상담사가 수강생의 요청으로 강의를 결제한다 (ok)
     - 강의신청이 되면 주문 내역이 배송팀에게 전달된다 (ok)
     - 배송팀에서 강의 교재 배송 출발한다 (ok)    
-    
+
 
 <img width="354" alt="1차본완성_2" src="https://user-images.githubusercontent.com/80744183/119315093-72218f00-bcb0-11eb-89da-74c039d0435a.png">
     
@@ -182,6 +184,8 @@
     - 결제가 취소되면 배송이 취소된다 (ok) 
     - 주문상태가 바뀔 때 마다 카톡으로 알림을 보낸다 (?)
 
+![1차완성본에대한기능적비기능적요구사항을커버하는지검증_3](https://user-images.githubusercontent.com/80744279/121443825-33d2e200-c9c9-11eb-9726-0c7ad234db1e.jpg)
+
 
 ### 모델 수정
 
@@ -189,6 +193,8 @@
     
     - 수정된 모델은 모든 요구사항을 커버함.
     - 배송 등록 event의 경우 한 event로 통함함.
+
+![모델수정](https://user-images.githubusercontent.com/80744279/121443849-3e8d7700-c9c9-11eb-90ac-d2bb25273bf2.jpg)
 
 ### 비기능 요구사항에 대한 검증
 
